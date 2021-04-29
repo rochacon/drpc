@@ -6,16 +6,46 @@ package main
 import (
 	"context"
 	"net"
+	"os"
 
+	log "github.com/sirupsen/logrus"
 	"storj.io/drpc/drpcmux"
 	"storj.io/drpc/drpcserver"
 
 	"storj.io/drpc/examples/drpc/pb"
 )
 
+func main() {
+	log.SetFormatter(&log.TextFormatter{
+		DisableColors: true,
+		FullTimestamp: true,
+	})
+	cookieMonster := &CookieMonsterServer{}
+	mux := drpcmux.New()
+	err := pb.DRPCRegisterCookieMonster(mux, cookieMonster)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Printf("failed to register cookieMonster service")
+		os.Exit(1)
+	}
+	s := drpcserver.New(mux)
+	addr := "0.0.0.0:8080"
+	log.WithFields(log.Fields{"addr": addr}).Printf("opening listen socket")
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Printf("failed to open listen socket")
+		os.Exit(1)
+	}
+	log.Printf("starting server")
+	ctx := context.Background()
+	err = s.Serve(ctx, lis)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Printf("failed to serve DRPC")
+		os.Exit(1)
+	}
+}
+
 type CookieMonsterServer struct {
 	pb.DRPCCookieMonsterUnimplementedServer
-	// struct fields
 }
 
 // EatCookie turns a cookie into crumbs.
@@ -23,39 +53,4 @@ func (s *CookieMonsterServer) EatCookie(ctx context.Context, cookie *pb.Cookie) 
 	return &pb.Crumbs{
 		Cookie: cookie,
 	}, nil
-}
-
-func main() {
-	err := Main(context.Background())
-	if err != nil {
-		panic(err)
-	}
-}
-
-func Main(ctx context.Context) error {
-	// create an RPC server
-	cookieMonster := &CookieMonsterServer{}
-
-	// create a drpc RPC mux
-	m := drpcmux.New()
-
-	// register the proto-specific methods on the mux
-	err := pb.DRPCRegisterCookieMonster(m, cookieMonster)
-	if err != nil {
-		return err
-	}
-
-	// create a drpc server
-	s := drpcserver.New(m)
-
-	// listen on a tcp socket
-	lis, err := net.Listen("tcp", ":8080")
-	if err != nil {
-		return err
-	}
-
-	// run the server
-	// N.B.: if you want TLS, you need to wrap the net.Listener with
-	// TLS before passing to Serve here.
-	return s.Serve(ctx, lis)
 }
