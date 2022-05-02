@@ -5,8 +5,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
-	"net"
 	"os"
 	"sync"
 	"time"
@@ -18,36 +18,34 @@ import (
 )
 
 func main() {
+	var addr string
 	var concurrency, requests int
 	var verbose bool
+	flag.StringVar(&addr, "a", "127.0.0.1:8080", "address to dial to")
 	flag.BoolVar(&verbose, "v", false, "print result for each call")
 	flag.IntVar(&concurrency, "c", 1, "worker concurrency")
 	flag.IntVar(&requests, "n", 1, "number of requests to be made")
 	flag.Parse()
-
-	ctx := context.Background()
 
 	log.SetFormatter(&log.TextFormatter{
 		DisableColors: true,
 		FullTimestamp: true,
 	})
 
-	latency := make(chan int64, concurrency)
+	latency := make(chan int64, concurrency*requests)
 	stats := Stats{
 		Start: time.Now(),
 	}
 	go func() {
-		for {
-			select {
-			case l := <-latency:
-				stats.Calls += 1
-				stats.LatencySum += l
-			}
+		for l := range latency {
+			stats.Calls += 1
+			stats.LatencySum += l
 		}
 		log.Println("latency channel closed")
 	}()
 
 	log.WithFields(log.Fields{
+		"addr":        addr,
 		"concurrency": concurrency,
 		"requests":    requests,
 	}).Printf("starting workers")
@@ -57,11 +55,12 @@ func main() {
 		go func(wg *sync.WaitGroup, requests int, id int, latency chan<- int64) {
 			defer wg.Done()
 
-			rawconn, err := net.Dial("tcp", "127.0.0.1:8080")
+			rawconn, err := tls.Dial("tcp", addr, nil)
 			if err != nil {
 				log.WithFields(log.Fields{"error": err}).Println("failed to connect to server")
 				os.Exit(1)
 			}
+			defer rawconn.Close()
 
 			conn := drpcconn.New(rawconn)
 			defer conn.Close()
@@ -69,18 +68,13 @@ func main() {
 			client := pb.NewDRPCCookieMonsterClient(conn)
 
 			for rc := 0; rc < requests; rc++ {
-				ctx, cancel := context.WithTimeout(ctx, time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 				defer cancel()
 
 				start := time.Now()
 				crumbs, err := client.EatCookie(ctx, &pb.Cookie{
-					Type: pb.Cookie_Oatmeal,
+					Type: pb.Cookie_Chocolate,
 				})
-				if err != nil {
-					log.WithFields(log.Fields{"worker": id, "error": err}).Println("failed")
-					continue
-				}
-
 				if err != nil {
 					log.WithFields(log.Fields{"worker": id, "error": err}).Println("failed")
 					continue
@@ -92,7 +86,7 @@ func main() {
 						"worker":  id,
 						"cookie":  crumbs.Cookie.Type.String(),
 						"latency": elapsed.String(),
-					}).Println("eaten")
+					}).Println("EatCookie")
 				}
 			}
 		}(wg, requests, id, latency)
