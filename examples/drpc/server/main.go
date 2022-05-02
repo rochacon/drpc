@@ -20,7 +20,10 @@ import (
 )
 
 func main() {
-	var tlsCrt, tlsKey string
+	var cookieAmount int64
+	var addr, tlsCrt, tlsKey string
+	flag.Int64Var(&cookieAmount, "a", 1000, "amount of cookies in each jar")
+	flag.StringVar(&addr, "addr", "0.0.0.0:8080", "address to listen to")
 	flag.StringVar(&tlsCrt, "tc", "", "tls certificate file")
 	flag.StringVar(&tlsKey, "tk", "", "tls private key")
 	flag.Parse()
@@ -30,14 +33,13 @@ func main() {
 		DisableColors: true,
 		FullTimestamp: true,
 	})
-	cookieMonster := NewCookieMonsterServer()
+	cookieMonster := NewCookieMonsterServer(cookieAmount)
 	mux := drpcmux.New()
 	err := pb.DRPCRegisterCookieMonster(mux, cookieMonster)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err}).Printf("failed to register cookieMonster service")
 		os.Exit(1)
 	}
-	addr := "0.0.0.0:8080"
 	log.WithFields(log.Fields{"addr": addr}).Printf("opening listen socket")
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -74,10 +76,10 @@ type CookieMonsterServer struct {
 	jar      map[pb.Cookie_Type]int64
 }
 
-func NewCookieMonsterServer() *CookieMonsterServer {
+func NewCookieMonsterServer(cookieAmount int64) *CookieMonsterServer {
 	jar := make(map[pb.Cookie_Type]int64)
 	for k := range pb.Cookie_Type_name {
-		jar[pb.Cookie_Type(k)] = 1000
+		jar[pb.Cookie_Type(k)] = cookieAmount
 	}
 	return &CookieMonsterServer{
 		jarMutex: sync.RWMutex{},
