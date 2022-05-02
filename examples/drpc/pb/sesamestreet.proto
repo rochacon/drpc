@@ -6,20 +6,24 @@ option go_package = "storj.io/drpc/examples/drpc/pb";
 
 package sesamestreet;
 
+message CookieJar {
+  Cookie cookie = 1;
+  int64 remaining = 2;
+}
+
 message Cookie {
   enum Type {
     Sugar = 0;
     Oatmeal = 1;
     Chocolate = 2;
+    Nutella = 3;
+    Strawberry = 4;
+    Vanilla = 5;
   }
-
   Type type = 1;
 }
 
-message Crumbs {
-  Cookie cookie = 1;
-}
-
 service CookieMonster {
-  rpc EatCookie(Cookie) returns (Crumbs) {}
+  rpc CheckJar(Cookie) returns (CookieJar) {}
+  rpc EatCookie(Cookie) returns (CookieJar) {}
 }
