@@ -58,6 +58,7 @@ func main() {
 			defer wg.Done()
 			var err error
 			var rawconn drpc.Transport
+			connStart := time.Now()
 			if tlsEnabled {
 				rawconn, err = tls.Dial("tcp", addr, nil)
 			} else {
@@ -68,6 +69,7 @@ func main() {
 				os.Exit(1)
 			}
 			defer rawconn.Close()
+			log.WithFields(log.Fields{"worker": id, "elapsed": time.Since(connStart)}).Println("connection started")
 
 			conn := drpcconn.New(rawconn)
 			defer conn.Close()
