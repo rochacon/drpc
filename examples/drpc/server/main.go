@@ -5,6 +5,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"flag"
 	"net"
 	"os"
 
@@ -16,6 +18,13 @@ import (
 )
 
 func main() {
+	var tlsCrtPath, tlsKeyPath string
+	flag.StringVar(&tlsCrtPath, "tc", "", "tls certificate path")
+	flag.StringVar(&tlsKeyPath, "tk", "", "tls private key path")
+	flag.Parse()
+
+	tlsEnabled := tlsCrtPath != "" && tlsKeyPath != ""
+
 	log.SetFormatter(&log.TextFormatter{
 		DisableColors: true,
 		FullTimestamp: true,
@@ -28,9 +37,27 @@ func main() {
 		os.Exit(1)
 	}
 	s := drpcserver.New(mux)
+	var lis net.Listener
 	addr := "0.0.0.0:8080"
-	log.WithFields(log.Fields{"addr": addr}).Printf("opening listen socket")
-	lis, err := net.Listen("tcp", addr)
+	log.WithFields(log.Fields{
+		"addr":        addr,
+		"tls_enabled": tlsEnabled,
+		"tls_crt":     tlsCrtPath,
+		"tls_key":     tlsKeyPath,
+	}).Printf("opening listen socket")
+	if tlsEnabled {
+		var tlsCrt tls.Certificate
+		tlsCrt, err = tls.LoadX509KeyPair(tlsCrtPath, tlsKeyPath)
+		if err != nil {
+			log.WithFields(log.Fields{"error": err}).Printf("failed to read tls certificates")
+			os.Exit(1)
+		}
+		lis, err = tls.Listen("tcp", addr, &tls.Config{
+			Certificates: []tls.Certificate{tlsCrt},
+		})
+	} else {
+		lis, err = net.Listen("tcp", addr)
+	}
 	if err != nil {
 		log.WithFields(log.Fields{"error": err}).Printf("failed to open listen socket")
 		os.Exit(1)

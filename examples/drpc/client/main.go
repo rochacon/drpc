@@ -7,11 +7,13 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
+	"net"
 	"os"
 	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"storj.io/drpc"
 	"storj.io/drpc/drpcconn"
 
 	"storj.io/drpc/examples/drpc/pb"
@@ -20,11 +22,12 @@ import (
 func main() {
 	var addr string
 	var concurrency, requests int
-	var verbose bool
+	var tlsEnabled, verbose bool
 	flag.StringVar(&addr, "a", "127.0.0.1:8080", "address to dial to")
-	flag.BoolVar(&verbose, "v", false, "print result for each call")
 	flag.IntVar(&concurrency, "c", 1, "worker concurrency")
 	flag.IntVar(&requests, "n", 1, "number of requests to be made")
+	flag.BoolVar(&tlsEnabled, "tls", false, "enable TLS")
+	flag.BoolVar(&verbose, "v", false, "print result for each call")
 	flag.Parse()
 
 	log.SetFormatter(&log.TextFormatter{
@@ -41,7 +44,6 @@ func main() {
 			stats.Calls += 1
 			stats.LatencySum += l
 		}
-		log.Println("latency channel closed")
 	}()
 
 	log.WithFields(log.Fields{
@@ -54,8 +56,13 @@ func main() {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup, requests int, id int, latency chan<- int64) {
 			defer wg.Done()
-
-			rawconn, err := tls.Dial("tcp", addr, nil)
+			var err error
+			var rawconn drpc.Transport
+			if tlsEnabled {
+				rawconn, err = tls.Dial("tcp", addr, nil)
+			} else {
+				rawconn, err = net.Dial("tcp", addr)
+			}
 			if err != nil {
 				log.WithFields(log.Fields{"error": err}).Println("failed to connect to server")
 				os.Exit(1)
